@@ -35,6 +35,7 @@ git push origin main
 5. Configure the service:
    - **Name**: `codeguard-api` (or any name you prefer)
    - **Environment**: `Python 3`
+   - **Python Version**: `3.10.0` (set in Environment Variables or use `runtime.txt`)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn api:app --host 0.0.0.0 --port $PORT`
    - **Plan**: Free (or choose a paid plan)
