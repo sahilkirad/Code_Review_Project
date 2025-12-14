@@ -34,6 +34,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Startup event: Validate critical environment variables
+@app.on_event("startup")
+async def startup_event():
+    """Validate environment variables on startup."""
+    logger.info("🚀 CodeGuard API starting up...")
+    
+    # Check critical variables (warn but don't fail)
+    critical_vars = {
+        "PINECONE_API_KEY": "Pinecone integration",
+        "PINECONE_INDEX_NAME": "Pinecone integration",
+    }
+    
+    missing = []
+    for var, feature in critical_vars.items():
+        if not os.getenv(var):
+            missing.append(f"{var} ({feature})")
+            logger.warning(f"⚠️  {var} not set - {feature} will not work")
+    
+    if missing:
+        logger.warning(f"⚠️  Missing environment variables: {', '.join(missing)}")
+    else:
+        logger.info("✅ All critical environment variables are set")
+    
+    # GitHub integration is optional (only needed for webhooks)
+    if not os.getenv("GITHUB_TOKEN"):
+        logger.info("ℹ️  GITHUB_TOKEN not set - GitHub webhook integration disabled")
+    else:
+        logger.info("✅ GitHub integration enabled")
+    
+    logger.info("✅ CodeGuard API ready!")
+
 # Initialize the Brain once
 workflow = GraphState()
 
@@ -54,7 +85,9 @@ def get_pr_analyzer():
     return pr_analyzer
 
 @app.get("/")
+@app.head("/")  # Render uses HEAD for health checks
 def health_check():
+    """Health check endpoint for Render and general monitoring."""
     return {"status": "CodeGuard is online"}
 
 @app.post("/analyze")
@@ -164,6 +197,14 @@ async def github_webhook(
         
         logger.info(f"Webhook received: PR #{pr_number} ({webhook_data.action}) in {repo_full_name}")
         
+        # Check if GitHub token is available before queuing
+        if not os.getenv("GITHUB_TOKEN"):
+            logger.warning("GITHUB_TOKEN not set - cannot process PR analysis")
+            return {
+                "status": "error",
+                "message": "GitHub integration not configured (GITHUB_TOKEN missing)"
+            }
+        
         # Queue background task for analysis
         background_tasks.add_task(
             analyze_pr_background,
@@ -184,7 +225,7 @@ async def github_webhook(
         raise
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
-        # Still return 200 to prevent GitHub from retrying
+        # Still return 200 to prevent GitHub from retrying excessively
         return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
