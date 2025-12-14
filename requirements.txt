@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+langchain
+langchain-ollama
+langgraph
+sentence-transformers
+pinecone-client
+pydantic
+python-multipart
+python-dotenv
+PyGithub
+

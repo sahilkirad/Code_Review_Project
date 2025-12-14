@@ -1,0 +1,39 @@
+name: code-review-env
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    # --- Core AI & Orchestration ---
+    - langchain>=0.1.0
+    - langgraph>=0.0.10
+    - langchain-community
+    - langchain-openai  # useful utility, even if using local models
+    - langchain-huggingface
+
+    # --- Vector DB & Embeddings ---
+    - pinecone
+    - sentence-transformers
+
+    # --- API & Backend ---
+    - fastapi
+    - uvicorn
+    - pydantic
+    - python-dotenv
+    - requests
+
+    # --- Data Processing ---
+    - pandas
+    - numpy
+    - black  # for formatting code fixes
+
+    # --- ML/Fine-Tuning (Base) ---
+    - torch --index-url https://download.pytorch.org/whl/cu118  # Adjust CUDA version if needed
+    - transformers
+    - peft
+    - datasets
+    - accelerate
+    - bitsandbytes  # for 4-bit quantization (QLoRA)

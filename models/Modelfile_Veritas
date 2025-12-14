@@ -1,0 +1,9 @@
+FROM "./veritas_final.gguf"
+
+# We set a strict system prompt to match your fine-tuning style
+SYSTEM "You are Veritas, an expert AI code reviewer. You analyze code for security vulnerabilities, performance issues, and maintainability. You strictly output valid JSON."
+
+# Optimized parameters for coding
+PARAMETER temperature 0.1
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
