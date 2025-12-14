@@ -22,10 +22,28 @@ def clear_cache():
     _result_cache = {}
     logger.info("Cache cleared")
 
-# Initialize our tools ONCE (global scope for efficiency)
-rag_system = RAGSystem()
-llm_client = CodeReviewLLM(model_name="veritas-pro")  # Using fine-tuned model
-code_parser = CodeParser()
+# Lazy initialization to save memory (especially important for Render free tier)
+_rag_system = None
+_llm_client = None
+code_parser = CodeParser()  # CodeParser is lightweight, can initialize immediately
+
+def get_rag_system():
+    """Lazy initialization of RAGSystem - only loads embedding model when needed."""
+    global _rag_system
+    if _rag_system is None:
+        logger.info("Initializing RAGSystem (lazy loading)...")
+        _rag_system = RAGSystem()
+        logger.info("RAGSystem initialized successfully")
+    return _rag_system
+
+def get_llm_client():
+    """Lazy initialization of LLM client."""
+    global _llm_client
+    if _llm_client is None:
+        logger.info("Initializing LLM client (lazy loading)...")
+        _llm_client = CodeReviewLLM(model_name="veritas-pro")
+        logger.info("LLM client initialized successfully")
+    return _llm_client
 
 class GraphState(TypedDict):
     filename: str
@@ -95,8 +113,9 @@ def retrieve_node(state: GraphState):
     # Adaptive similarity threshold
     similarity_threshold = 0.6  # Default, can be made configurable
     
-    # Search Pinecone with similarity threshold
+    # Search Pinecone with similarity threshold (lazy load RAGSystem)
     logger.info(f"Searching Pinecone with top_k={top_k}, similarity_threshold={similarity_threshold}")
+    rag_system = get_rag_system()
     matches = rag_system.search_similar_code(code, top_k=top_k, similarity_threshold=similarity_threshold)
     logger.info(f"Found {len(matches)} similar code examples in Pinecone")
     
@@ -142,6 +161,7 @@ def analyze_node(state: GraphState):
         module_block = code_parser.extract_module_level_code(code)
         if module_block:
             logger.info(f"--- Analyzing MODULE-LEVEL code (lines {module_block['start_line']}-{module_block['end_line']}) ---")
+            llm_client = get_llm_client()
             module_result = llm_client.review_code(module_block["code"], context)
             module_issues = module_result.get("issues", [])
             
@@ -173,7 +193,8 @@ def analyze_node(state: GraphState):
             
             logger.info(f"--- Analyzing {block_type} '{block_name}' (lines {block.get('start_line', 0)}-{block.get('end_line', 0)}) ---")
             
-            # Analyze each block with context
+            # Analyze each block with context (lazy load LLM client)
+            llm_client = get_llm_client()
             block_result = llm_client.review_code(block_code, context)
             block_issue_list = block_result.get("issues", [])
             
@@ -209,6 +230,7 @@ def analyze_node(state: GraphState):
     else:
         # Full file analysis for small files or when no blocks found
         logger.info(f"--- Using FULL-FILE analysis ---")
+        llm_client = get_llm_client()
         result = llm_client.review_code(code, context)
         all_issues = result.get("issues", [])
         
@@ -288,10 +310,11 @@ def store_node(state: GraphState):
     logger.info(f"Issue severity breakdown: High={severity_counts['high']}, Medium={severity_counts['medium']}, Low={severity_counts['low']}")
     logger.info(f"Prepared {len(examples_to_store)} examples for storage (High/Medium only)")
     
-    # Batch store in background (non-blocking)
+    # Batch store in background (non-blocking) - lazy load RAGSystem
     if examples_to_store:
         try:
             logger.info(f"Attempting to store {len(examples_to_store)} examples in Pinecone...")
+            rag_system = get_rag_system()
             rag_system.batch_upsert_examples(examples_to_store)
             logger.info(f"✅ SUCCESS: Stored {len(examples_to_store)} examples from {filename} in Pinecone")
         except Exception as e:

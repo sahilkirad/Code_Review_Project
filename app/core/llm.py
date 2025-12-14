@@ -56,14 +56,14 @@ Check for:
 
 Output format (JSON only):
 {{
-  "issues": [
+            "issues": [
     {{
       "type": "Security Issue",
       "severity": "High",
-      "explanation": "Brief explanation",
+                    "explanation": "Brief explanation",
       "suggested_fix": "How to fix"
     }}
-  ]
+            ]
 }}
 
 Your response must be ONLY this JSON format with ALL issues found. No code examples. No explanations. Just JSON."""
@@ -77,14 +77,14 @@ Your response must be ONLY this JSON format with ALL issues found. No code examp
 {code_snippet}
 
 Similar past issues found:
-{context_str}
+        {context_str}
 
 Remember: Find ALL issues - security issues, bugs, code smells. Output ONLY: {{"issues": [...]}}"""
         else:
             # Match training format exactly when no RAG context
             user_message_template = """Review this code THOROUGHLY and find ALL issues. Check every function, every line, and every code pattern. Output ONLY a JSON object with an "issues" array containing ALL issues found.
 
-{code_snippet}
+        {code_snippet}
 
 Remember: Find ALL issues - security issues, bugs, code smells. Output ONLY: {{"issues": [...]}}"""
 

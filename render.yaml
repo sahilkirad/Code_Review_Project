@@ -1,4 +1,4 @@
-services:
+image.pngservices:
   - type: web
     name: codeguard-api
     env: python
