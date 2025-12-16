@@ -43,13 +43,25 @@ Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
 
 ### 3. Configure GitHub Webhook
 
+**Option A: Using Render (Recommended - No ngrok needed)**
 1. Go to your repository on GitHub
-2. Settings → Webhooks → Add webhook
-3. **Payload URL**: `https://your-ngrok-url.ngrok.io/webhook/github`
+2. Settings → Webhooks → Add webhook (or edit existing)
+3. **Payload URL**: `https://codeguard-api.onrender.com/webhook/github` (or your Render URL)
 4. **Content type**: `application/json`
 5. **Secret**: Your `GITHUB_WEBHOOK_SECRET` value
 6. **Events**: Select "Pull requests" only
-7. Click "Add webhook"
+7. Click "Add webhook" or "Update webhook"
+
+**Option B: Using Ngrok (For local development)**
+1. Start ngrok: `ngrok http 8000`
+2. Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+3. Go to your repository on GitHub
+4. Settings → Webhooks → Add webhook
+5. **Payload URL**: `https://your-ngrok-url.ngrok.io/webhook/github`
+6. **Content type**: `application/json`
+7. **Secret**: Your `GITHUB_WEBHOOK_SECRET` value
+8. **Events**: Select "Pull requests" only
+9. Click "Add webhook"
 
 ### 4. Start CodeGuard API
 ```bash

@@ -1,0 +1,232 @@
+name: CodeGuard Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+      
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Cache model file
+        uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: models/veritas_final.gguf
+          key: model-veritas-v1.0.0
+          restore-keys: |
+            model-veritas-
+      
+      - name: Download model from release
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          curl -L -o models/veritas_final.gguf \
+            https://github.com/${{ github.repository }}/releases/download/v1.0.0/veritas_final.gguf
+          echo "Model downloaded successfully"
+      
+      - name: Verify model file
+        run: |
+          if [ ! -f models/veritas_final.gguf ]; then
+            echo "Error: Model file not found"
+            exit 1
+          fi
+          ls -lh models/veritas_final.gguf
+      
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama --version
+      
+      - name: Create model in Ollama
+        run: |
+          MODEL_PATH=$(pwd)/models/veritas_final.gguf
+          
+          # Create modelfile with absolute path
+          if [ -f models/Modelfile_Veritas ]; then
+            # Use existing modelfile but replace FROM path with absolute path
+            sed "s|FROM.*|FROM $MODEL_PATH|" models/Modelfile_Veritas > /tmp/Modelfile_Veritas
+            cat /tmp/Modelfile_Veritas
+            ollama create veritas-pro -f /tmp/Modelfile_Veritas
+          else
+            # Create model with default settings
+            ollama create veritas-pro -f - <<EOF
+          FROM $MODEL_PATH
+          SYSTEM "You are Veritas, an expert AI code reviewer. You analyze code for security vulnerabilities, performance issues, and maintainability. You strictly output valid JSON."
+          PARAMETER temperature 0.1
+          PARAMETER num_predict 1000
+          PARAMETER stop "<|im_end|>"
+          PARAMETER stop "<|endoftext|>"
+          EOF
+          fi
+          
+          # Verify model was created
+          echo "Available models:"
+          ollama list
+          
+          # Test model loading (this will download/load the model)
+          echo "Loading model (this may take a minute)..."
+          ollama show veritas-pro
+      
+      
+      - name: Run CodeGuard analysis
+        id: analysis
+        env:
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ secrets.PINECONE_INDEX_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os
+          import sys
+          import json
+          from github import Github
+          from app.core.graph import GraphState
+          from app.core.github.formatter import CommentFormatter
+          
+          # Read GitHub event
+          with open(os.environ['GITHUB_EVENT_PATH'], 'r') as f:
+              event = json.load(f)
+          
+          pr_number = event['pull_request']['number']
+          repo_full_name = event['repository']['full_name']
+          
+          # Initialize
+          github = Github(os.environ['GITHUB_TOKEN'])
+          repo = github.get_repo(repo_full_name)
+          pr = repo.get_pull(pr_number)
+          
+          # Get changed files
+          changed_files = []
+          for file in pr.get_files():
+              if file.filename.endswith('.py'):
+                  changed_files.append(file.filename)
+          
+          if not changed_files:
+              print("No Python files changed")
+              # Post a comment saying no Python files
+              pr.create_issue_comment("## 🛡️ CodeGuard Bot\n\n✅ No Python files changed in this PR. Nothing to analyze.")
+              sys.exit(0)
+          
+          # Limit to 10 files
+          changed_files = changed_files[:10]
+          print(f"Analyzing {len(changed_files)} Python file(s)")
+          
+          # Initialize workflow
+          workflow = GraphState()
+          formatter = CommentFormatter()
+          
+          files_analyzed = []
+          total_issues = 0
+          high_count = 0
+          medium_count = 0
+          low_count = 0
+          
+          # Analyze each file
+          for filename in changed_files:
+              try:
+                  print(f"Analyzing {filename}...")
+                  # Get file content
+                  file_content = repo.get_contents(filename, ref=pr.head.sha).decoded_content.decode('utf-8')
+                  
+                  # Run analysis
+                  result = workflow.run_workflow({
+                      "code_snippet": file_content,
+                      "filename": filename
+                  })
+                  
+                  issues = result.get("review_issues", [])
+                  
+                  # Count by severity
+                  for issue in issues:
+                      severity = issue.get("severity", "Low").lower()
+                      if severity == "high":
+                          high_count += 1
+                      elif severity == "medium":
+                          medium_count += 1
+                      else:
+                          low_count += 1
+                  
+                  total_issues += len(issues)
+                  
+                  if issues:
+                      files_analyzed.append({
+                          "filename": filename,
+                          "issues": issues
+                      })
+                      print(f"Found {len(issues)} issues in {filename}")
+              except Exception as e:
+                  print(f"Error analyzing {filename}: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  continue
+                      
+          # Format comment
+          comment_body = formatter.format_pr_comment(
+              files_analyzed,
+              total_issues,
+              high_count,
+              medium_count,
+              low_count
+          )
+          
+          # Find existing comment
+          existing_comment = None
+          for comment in pr.get_issue_comments():
+              if "CodeGuard Bot" in comment.body:
+                  existing_comment = comment
+                  break
+          
+          # Post or update comment
+          if existing_comment:
+              existing_comment.edit(comment_body)
+              print("Updated existing comment")
+          else:
+              pr.create_issue_comment(comment_body)
+              print("Posted new comment")
+          
+          # Output results using GITHUB_OUTPUT
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"total_issues={total_issues}\n")
+              f.write(f"files_analyzed={len(files_analyzed)}\n")
+          EOF
+      
+      - name: Analysis summary
+        if: always()
+        run: |
+          echo "Analysis completed"
+          echo "Files analyzed: ${{ steps.analysis.outputs.files_analyzed }}"
+          echo "Total issues: ${{ steps.analysis.outputs.total_issues }}"
+
