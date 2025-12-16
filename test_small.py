@@ -1,10 +1,9 @@
 # Small test file for Veritas code review
 
 # SECURITY ISSUE: Hardcoded API key
-API_KEY = "sk-1234567890abcdef"
-
+API_KEY = "sk-1234567890abcdef
 # SECURITY ISSUE: SQL Injection
-def get_user(user_id):
+def get_user(user_id)
     import sqlite3
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
