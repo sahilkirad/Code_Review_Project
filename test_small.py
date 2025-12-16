@@ -1,7 +1,7 @@
 # Small test file for Veritas code review
 
 # SECURITY ISSUE: Hardcoded API key
-API_KEY = "sk-1234567890abcdef
+API_KEY = "sk-1234567890abcde
 # SECURITY ISSUE: SQL Injection
 def get_user(user_id)
     import sqlite3
